@@ -16,11 +16,15 @@ struct CheckInsertedCannulaView: View {
     
     @State private var cancelModalIsPresented: Bool = false
     @State private var flashlightOn: Bool = false
+    @State private var siteSide: PodInsertionSite.Side?
+    @State private var siteArea: PodInsertionSite.Area?
     
     private var didRequestDeactivation: () -> Void
     private var wasInsertedProperly: () -> Void
+    private var podActivatedAt: Date?
 
-    init(didRequestDeactivation: @escaping () -> Void, wasInsertedProperly: @escaping () -> Void) {
+    init(podActivatedAt: Date? = nil, didRequestDeactivation: @escaping () -> Void, wasInsertedProperly: @escaping () -> Void) {
+        self.podActivatedAt = podActivatedAt
         self.didRequestDeactivation = didRequestDeactivation
         self.wasInsertedProperly = wasInsertedProperly
     }
@@ -52,12 +56,16 @@ struct CheckInsertedCannulaView: View {
                          setFlashlightState(state: v)
                      }
                  }
+
+                siteSelector
+                    .padding(.top)
             }
 
         }) {
             VStack(spacing: 10) {
                 Button(action: {
                     flashlightOn = false
+                    PodInsertionSite.post(side: siteSide, area: siteArea, podActivatedAt: podActivatedAt)
                     self.wasInsertedProperly()
                 }) {
                     Text(LocalizedString("Yes", comment: "Button label for user to answer cannula was properly inserted"))
@@ -80,6 +88,26 @@ struct CheckInsertedCannulaView: View {
         .navigationBarBackButtonHidden(true)
     }
     
+    var siteSelector: some View {
+        HStack {
+            Picker(LocalizedString("Side", comment: "Label for pod site side picker"), selection: $siteSide) {
+                ForEach(PodInsertionSite.Side.allCases, id: \.self) { side in
+                    Text(side.shortLabel).tag(Optional(side))
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 96)
+
+            Picker(LocalizedString("Site", comment: "Label for pod site area picker"), selection: $siteArea) {
+                ForEach(PodInsertionSite.Area.allCases, id: \.self) { area in
+                    Text(area.shortLabel).tag(Optional(area))
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .accessibility(identifier: "pod_site_selector")
+    }
+
     var cancelButton: some View {
         Button(LocalizedString("Cancel", comment: "Cancel button text in navigation bar on insert cannula screen")) {
             cancelModalIsPresented = true
@@ -122,6 +150,54 @@ struct CheckInsertedCannulaView: View {
                 flashlightOn = false
             }
         }
+    }
+}
+
+/// Where the pod was placed, chosen while checking the cannula. Optional and never blocks setup;
+/// the host app hears about it through `selectedNotification` and can record it with the pod change.
+public enum PodInsertionSite {
+    public static let selectedNotification = Notification.Name("OmnipodKit.PodInsertionSiteSelected")
+    public static let siteKey = "site"
+    public static let podActivatedAtKey = "podActivatedAt"
+
+    enum Side: String, CaseIterable {
+        case left = "Left"
+        case right = "Right"
+
+        var shortLabel: String {
+            switch self {
+            case .left: return LocalizedString("L", comment: "Short label for left pod site")
+            case .right: return LocalizedString("R", comment: "Short label for right pod site")
+            }
+        }
+    }
+
+    enum Area: String, CaseIterable {
+        case arm = "Arm"
+        case leg = "Leg"
+        case tummy = "Tummy"
+        case bum = "Bum"
+
+        var shortLabel: String {
+            switch self {
+            case .arm: return LocalizedString("Arm", comment: "Short label for arm pod site")
+            case .leg: return LocalizedString("Leg", comment: "Short label for leg pod site")
+            case .tummy: return LocalizedString("Tum", comment: "Short label for tummy pod site")
+            case .bum: return LocalizedString("Bum", comment: "Short label for bum pod site")
+            }
+        }
+    }
+
+    static func describe(side: Side?, area: Area?) -> String? {
+        let parts = [side?.rawValue, area?.rawValue].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    static func post(side: Side?, area: Area?, podActivatedAt: Date?) {
+        guard let site = describe(side: side, area: area) else { return }
+        var userInfo: [String: Any] = [siteKey: site]
+        userInfo[podActivatedAtKey] = podActivatedAt
+        NotificationCenter.default.post(name: selectedNotification, object: nil, userInfo: userInfo)
     }
 }
 

@@ -330,6 +330,7 @@ class OmniUICoordinator: UINavigationController, PumpManagerOnboarding, Completi
 
         case .checkInsertedCannula:
             let view = CheckInsertedCannulaView(
+                podActivatedAt: pumpManager.state.podState?.activatedAt,
                 didRequestDeactivation: { [weak self] in
                     self?.navigateTo(.deactivate)
                 },
